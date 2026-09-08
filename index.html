@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prueba Monitor AOS</title>
+</head>
+<body style="font-family: sans-serif; padding: 20px; background:#111; color:#eee;">
+  <h1>Prueba de conexion con Blynk</h1>
+  <p id="resultado">Cargando...</p>
+
+  <script>
+    const TOKEN = "Y1l8ur86hHTcYlxXcNSJxuVsJEt1VsUO";
+    const SERVIDOR = "ny3.blynk.cloud";
+
+    fetch(`https://${SERVIDOR}/external/api/get?token=${TOKEN}&v6`)
+      .then(respuesta => {
+        if (!respuesta.ok) throw new Error("Codigo HTTP: " + respuesta.status);
+        return respuesta.text();
+      })
+      .then(valor => {
+        document.getElementById("resultado").innerText =
+          "FUNCIONO. Indice de apnea (V6) leido desde Blynk: " + valor;
+      })
+      .catch(error => {
+        document.getElementById("resultado").innerText =
+          "FALLO: " + error.message;
+      });
+  </script>
+</body>
+</html>
