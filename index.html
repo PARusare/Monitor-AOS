@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor AOS</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, sans-serif;
+    background: #0d0f14;
+    color: #eee;
+    padding: 24px 16px 60px;
+  }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+  p.subtitulo { font-size: 14px; color: #999; margin-bottom: 20px; line-height: 1.4; }
+
+  .leyenda { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+  .leyenda-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #999; }
+  .leyenda-punto { width: 12px; height: 12px; border-radius: 4px; }
+
+  .mes-seccion { margin-bottom: 28px; }
+  .mes-titulo { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 12px; text-align: center; }
+
+  .dias-semana {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+    margin-bottom: 6px; text-align: center; font-size: 11px; color: #666;
+  }
+
+  .grid-dias { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .dia-celda {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 10px; background: #171a21; color: #444; font-size: 14px;
+    border: 2px solid transparent;
+  }
+  .dia-vacio { background: transparent; }
+  .dia-datos { background: #3b82f6; color: #fff; font-weight: 600; }
+  .dia-guardado { background: #22c55e; color: #06210f; font-weight: 600; }
+  .dia-hoy { border-color: #fff; }
+  a.dia-celda { text-decoration: none; }
+</style>
+</head>
+<body>
+
+  <h1>Monitor AOS</h1>
+  <p class="subtitulo">Bienvenido al Monitor de tamizaje temprano de apnea del sueño. Selecciona un dia para ver su reporte.</p>
+
+  <div class="leyenda">
+    <div class="leyenda-item"><div class="leyenda-punto" style="background:#3b82f6"></div>Datos del ultimo registro</div>
+    <div class="leyenda-item"><div class="leyenda-punto" style="background:#22c55e"></div>Datos guardados</div>
+    <div class="leyenda-item"><div class="leyenda-punto" style="background:#171a21; border:2px solid #fff"></div>Dia de hoy</div>
+  </div>
+
+  <div id="calendarios"></div>
+
+<script>
+  const TOKEN = "Y1l8ur86hHTcYlxXcNSJxuVsJEt1VsUO";
+  const SERVIDOR = "ny3.blynk.cloud";
+  const GH_USUARIO = "PARusare";
+  const GH_REPO = "Monitor-AOS";
+
+  const MESES = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
+
+  function hoyMexico() {
+    const partes = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit"
+    }).formatToParts(new Date());
+    const obj = {};
+    partes.forEach(p => obj[p.type] = p.value);
+    return { iso: `${obj.year}-${obj.month}-${obj.day}`, anio: parseInt(obj.year), mes: parseInt(obj.month), dia: parseInt(obj.day) };
+  }
+
+  // Dibuja un mes especifico (anio, mes de 1 a 12) dentro de un contenedor
+  function dibujarMes(anio, mes, diasGuardados, fechaDatos, hoy) {
+    const seccion = document.createElement("div");
+    seccion.className = "mes-seccion";
+
+    const titulo = document.createElement("div");
+    titulo.className = "mes-titulo";
+    titulo.innerText = `${MESES[mes - 1]} ${anio}`;
+    seccion.appendChild(titulo);
+
+    const semanaHead = document.createElement("div");
+    semanaHead.className = "dias-semana";
+    semanaHead.innerHTML = "<span>D</span><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span>";
+    seccion.appendChild(semanaHead);
+
+    const grid = document.createElement("div");
+    grid.className = "grid-dias";
+
+    const primerDiaSemana = new Date(anio, mes - 1, 1).getDay();
+    const diasEnMes = new Date(anio, mes, 0).getDate();
+
+    for (let i = 0; i < primerDiaSemana; i++) {
+      const vacio = document.createElement("div");
+      vacio.className = "dia-celda dia-vacio";
+      grid.appendChild(vacio);
+    }
+
+    for (let d = 1; d <= diasEnMes; d++) {
+      const fechaISO = `${anio}-${String(mes).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      const esGuardado = diasGuardados.includes(fechaISO);
+      const esDatoActual = fechaDatos === fechaISO;
+      const esHoy = fechaISO === hoy.iso;
+
+      let clases = "dia-celda";
+      if (esGuardado) clases += " dia-guardado";
+      else if (esDatoActual) clases += " dia-datos";
+      if (esHoy) clases += " dia-hoy";
+
+      const celda = document.createElement("a");
+      celda.href = `dia.html?fecha=${fechaISO}`;
+      celda.className = clases;
+      celda.innerText = d;
+      grid.appendChild(celda);
+    }
+
+    seccion.appendChild(grid);
+    return seccion;
+  }
+
+  async function construirCalendario() {
+    const hoy = hoyMexico();
+    const contenedor = document.getElementById("calendarios");
+    contenedor.innerHTML = "Cargando...";
+
+    // Dias ya guardados en GitHub (verde)
+    let diasGuardados = [];
+    try {
+      const resp = await fetch(`https://api.github.com/repos/${GH_USUARIO}/${GH_REPO}/contents/reportes`);
+      if (resp.ok) {
+        const archivos = await resp.json();
+        diasGuardados = archivos.map(a => a.name.replace(".json", ""));
+      }
+    } catch (err) { /* sigue sin lista guardada si falla */ }
+
+    // Fecha real del ultimo dato recibido de Blynk (azul)
+    let fechaDatos = null;
+    try {
+      const respBlynk = await fetch(`https://${SERVIDOR}/external/api/getAll?token=${TOKEN}`);
+      if (respBlynk.ok) {
+        const datosBlynk = await respBlynk.json();
+        fechaDatos = datosBlynk.v10 || null;
+      }
+    } catch (err) { /* sigue sin marcar azul si falla */ }
+
+    // El mes actual siempre se muestra. Ademas, cualquier otro mes que
+    // tenga datos reales (guardados o el dato mas reciente de Blynk)
+    // tambien se agrega -- nunca meses vacios "porque si".
+    const clavesMes = new Set();
+    clavesMes.add(`${hoy.anio}-${hoy.mes}`);
+    diasGuardados.forEach(f => {
+      const [a, m] = f.split("-");
+      clavesMes.add(`${parseInt(a)}-${parseInt(m)}`);
+    });
+    if (fechaDatos) {
+      const [a, m] = fechaDatos.split("-");
+      clavesMes.add(`${parseInt(a)}-${parseInt(m)}`);
+    }
+
+    const meses = Array.from(clavesMes)
+      .map(c => { const [a, m] = c.split("-").map(Number); return { anio: a, mes: m }; })
+      .sort((a, b) => (a.anio - b.anio) || (a.mes - b.mes));
+
+    contenedor.innerHTML = "";
+    meses.forEach(({ anio, mes }) => {
+      contenedor.appendChild(dibujarMes(anio, mes, diasGuardados, fechaDatos, hoy));
+    });
+  }
+
+  construirCalendario();
+</script>
+</body>
+</html>
