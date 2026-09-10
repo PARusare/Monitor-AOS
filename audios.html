@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor AOS - Audios</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, sans-serif;
+    background: #0d0f14;
+    color: #eee;
+    padding: 24px 16px 60px;
+  }
+  .top { display: flex; align-items: center; margin-bottom: 20px; }
+  .volver { color: #999; text-decoration: none; font-size: 15px; margin-right: 12px; }
+  h1 { font-size: 18px; font-weight: 600; color: #fff; }
+  .card {
+    background: #171a21;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .section-title { font-size: 14px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .audio-item { margin-bottom: 18px; }
+  .audio-item:last-child { margin-bottom: 0; }
+  .audio-label { font-size: 13px; color: #ccc; margin-bottom: 8px; }
+  audio { width: 100%; }
+  .sin-audios { color: #666; font-size: 13px; text-align: center; padding: 12px; }
+
+  #btnGuardar {
+    width: 100%;
+    background: #22c55e;
+    color: #06210f;
+    font-size: 17px;
+    font-weight: 700;
+    border: none;
+    border-radius: 14px;
+    padding: 18px;
+    margin-top: 8px;
+  }
+  #btnGuardar:disabled { background: #262a33; color: #666; }
+  .texto-guardar { text-align: center; font-size: 12px; color: #777; margin-top: 10px; }
+  .aviso-pasado {
+    text-align: center; background: #262a33; color: #999; font-size: 13px;
+    border-radius: 14px; padding: 16px; margin-top: 8px;
+  }
+
+  #estado { text-align: center; color: #777; font-size: 13px; margin-top: 10px; }
+
+  .nav-swipe {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 20px; gap: 8px;
+  }
+  .nav-btn {
+    background: #171a21; color: #eee; border: 1px solid #2a2e38;
+    border-radius: 10px; padding: 10px 14px; font-size: 13px; flex-shrink: 0;
+  }
+  .nav-leyenda { color: #555; font-size: 11px; text-align: center; flex: 1; }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <a href="#" id="volverLink" class="volver">&larr;</a>
+    <h1 id="tituloFecha">Audios - Cargando...</h1>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Audios de la sesion</div>
+    <div id="zonaAudios"><div class="sin-audios">Cargando...</div></div>
+  </div>
+
+  <div id="zonaGuardar"></div>
+
+  <div class="nav-swipe">
+    <button class="nav-btn" onclick="irADia()">&larr; Resumen del dia</button>
+    <span class="nav-leyenda">Desliza para navegar</span>
+  </div>
+
+  <div id="estado"></div>
+
+<script>
+  const TOKEN = "Y1l8ur86hHTcYlxXcNSJxuVsJEt1VsUO";
+  const SERVIDOR = "ny3.blynk.cloud";
+  const GH_USUARIO = "PARusare";
+  const GH_REPO = "Monitor-AOS";
+  const GH_TOKEN = "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";
+
+  const params = new URLSearchParams(window.location.search);
+  const fecha = params.get("fecha");
+  document.getElementById("volverLink").onclick = (e) => { e.preventDefault(); irADia(); };
+  function irADia() { window.location.href = `dia.html?fecha=${fecha}`; }
+
+  // --- Gesto de deslizar: derecha = resumen del dia, izquierda = sin destino (por ahora) ---
+  let touchStartX = 0;
+  document.addEventListener("touchstart", e => { touchStartX = e.changedTouches[0].screenX; });
+  document.addEventListener("touchend", e => {
+    const diff = e.changedTouches[0].screenX - touchStartX;
+    if (Math.abs(diff) < 60) return;
+    if (diff > 0) irADia();
+  });
+
+  function formatearFecha(fechaISO) {
+    if (!fechaISO || !fechaISO.includes("-")) return fechaISO || "Dia";
+    const [anio, mes, dia] = fechaISO.split("-");
+    const fechaObj = new Date(`${fechaISO}T12:00:00`);
+    const dias = ["DOMINGO","LUNES","MARTES","MIERCOLES","JUEVES","VIERNES","SABADO"];
+    return `${dias[fechaObj.getDay()]} ${dia}/${mes}/${anio.slice(2)}`;
+  }
+
+  async function cargarAudios() {
+    const zona = document.getElementById("zonaAudios");
+    const nombres = [`${fecha}_1.wav`, `${fecha}_2.wav`];
+    let encontrados = 0;
+    zona.innerHTML = "";
+
+    for (let i = 0; i < nombres.length; i++) {
+      const url = `https://raw.githubusercontent.com/${GH_USUARIO}/${GH_REPO}/main/audios/${nombres[i]}`;
+      try {
+        const resp = await fetch(url, { method: "HEAD" });
+        if (resp.ok) {
+          encontrados++;
+          const item = document.createElement("div");
+          item.className = "audio-item";
+          item.innerHTML = `<div class="audio-label">Grabacion ${i + 1}</div>
+                             <audio controls src="${url}"></audio>`;
+          zona.appendChild(item);
+        }
+      } catch (err) { /* sigue con el siguiente */ }
+    }
+
+    if (encontrados === 0) {
+      zona.innerHTML = '<div class="sin-audios">Sin audios disponibles para este dia.</div>';
+    }
+  }
+
+  async function guardarDatos(datos) {
+    const boton = document.getElementById("btnGuardar");
+    boton.disabled = true;
+    boton.innerText = "Guardando...";
+    const contenido = JSON.stringify(datos, null, 2);
+    const contenidoB64 = btoa(unescape(encodeURIComponent(contenido)));
+    try {
+      const url = `https://api.github.com/repos/${GH_USUARIO}/${GH_REPO}/contents/reportes/${fecha}.json`;
+      let sha = null;
+      const existente = await fetch(url);
+      if (existente.ok) sha = (await existente.json()).sha;
+
+      const resp = await fetch(url, {
+        method: "PUT",
+        headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify(sha ? { message: "Reporte " + fecha, content: contenidoB64, sha } : { message: "Reporte " + fecha, content: contenidoB64 })
+      });
+      if (!resp.ok) throw new Error("codigo " + resp.status);
+      boton.innerText = "Guardado ✓";
+    } catch (err) {
+      boton.innerText = "Error al guardar";
+      boton.disabled = false;
+      console.error(err);
+    }
+  }
+
+  (async () => {
+    document.getElementById("tituloFecha").innerText = "Audios - Cargando...";
+    try {
+      const respBlynk = await fetch(`https://${SERVIDOR}/external/api/getAll?token=${TOKEN}`);
+      const datosBlynk = respBlynk.ok ? await respBlynk.json() : null;
+      const esDatoActual = datosBlynk && datosBlynk.v10 === fecha;
+
+      if (esDatoActual) {
+        const horas = parseFloat(datosBlynk.v4 ?? 0);
+        document.getElementById("zonaGuardar").innerHTML =
+          `<button id="btnGuardar" ${horas > 0 ? "" : "disabled"}>Guardar datos</button>
+           <div class="texto-guardar">Guardar datos para generar reporte semanal</div>`;
+        document.getElementById("btnGuardar").onclick = () => guardarDatos(datosBlynk);
+      } else {
+        const resp = await fetch(`https://raw.githubusercontent.com/${GH_USUARIO}/${GH_REPO}/main/reportes/${fecha}.json`);
+        document.getElementById("zonaGuardar").innerHTML = resp.ok
+          ? '<div class="aviso-pasado">Este es un reporte guardado. No se puede sobreescribir.</div>'
+          : '<div class="aviso-pasado">Sin datos para este dia.</div>';
+      }
+
+      await cargarAudios();
+      document.getElementById("tituloFecha").innerText = "Audios - " + formatearFecha(fecha);
+      document.getElementById("estado").innerText = "Actualizado: " + new Date().toLocaleTimeString();
+    } catch (err) {
+      document.getElementById("estado").innerText = "Error: " + err.message;
+    }
+  })();
+</script>
+</body>
+</html>
