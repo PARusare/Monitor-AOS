@@ -169,10 +169,20 @@
 
       if (esDatoActual) {
         const horas = parseFloat(datosBlynk.v4 ?? 0);
-        document.getElementById("zonaGuardar").innerHTML =
-          `<button id="btnGuardar" ${horas > 0 ? "" : "disabled"}>Guardar datos</button>
-           <div class="texto-guardar">Guardar datos para generar reporte semanal</div>`;
-        document.getElementById("btnGuardar").onclick = () => guardarDatos(datosBlynk);
+        // Aunque sea el dato mas reciente de Blynk, puede que este mismo dia
+        // ya se haya guardado antes -- en ese caso no se ofrece el boton
+        // verde de nuevo, se muestra como ya guardado.
+        const respGuardado = await fetch(`https://raw.githubusercontent.com/${GH_USUARIO}/${GH_REPO}/main/reportes/${fecha}.json`);
+        if (respGuardado.ok) {
+          document.getElementById("zonaGuardar").innerHTML =
+            `<button id="btnGuardar" disabled>Guardado ✓</button>
+             <div class="texto-guardar">Estos datos ya se guardaron</div>`;
+        } else {
+          document.getElementById("zonaGuardar").innerHTML =
+            `<button id="btnGuardar" ${horas > 0 ? "" : "disabled"}>Guardar datos</button>
+             <div class="texto-guardar">Guardar datos para generar reporte semanal</div>`;
+          document.getElementById("btnGuardar").onclick = () => guardarDatos(datosBlynk);
+        }
       } else {
         const resp = await fetch(`https://raw.githubusercontent.com/${GH_USUARIO}/${GH_REPO}/main/reportes/${fecha}.json`);
         document.getElementById("zonaGuardar").innerHTML = resp.ok
