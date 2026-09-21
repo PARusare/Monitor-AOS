@@ -85,7 +85,7 @@
   const SERVIDOR = "ny3.blynk.cloud";
   const GH_USUARIO = "PARusare";
   const GH_REPO = "Monitor-AOS";
-  const GH_TOKEN = "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";
+  const URL_WORKER = "https://monitor-aos-guardar.mail-devariosusos111.workers.dev/";
 
   const params = new URLSearchParams(window.location.search);
   const fecha = params.get("fecha");
@@ -139,31 +139,13 @@
     const boton = document.getElementById("btnGuardar");
     boton.disabled = true;
     boton.innerText = "Guardando...";
-    const contenido = JSON.stringify(datos, null, 2);
-    const contenidoB64 = btoa(unescape(encodeURIComponent(contenido)));
     try {
-      const url = `https://api.github.com/repos/${GH_USUARIO}/${GH_REPO}/contents/reportes/${fecha}.json`;
-      const headersComunes = {
-        "Authorization": `token ${GH_TOKEN}`,
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28"
-      };
-
-      let sha = null;
-      const existente = await fetch(url, { headers: headersComunes });
-      if (existente.ok) {
-        sha = (await existente.json()).sha;
-      } else if (existente.status !== 404) {
-        // 404 es normal (el reporte aun no existe); cualquier otro codigo aqui
-        // ya indica un problema de token/permisos que conviene ver.
-        const detalle = await existente.text();
-        throw new Error(`chequeo previo: codigo ${existente.status} - ${detalle}`);
-      }
-
-      const resp = await fetch(url, {
-        method: "PUT",
-        headers: { ...headersComunes, "Content-Type": "application/json" },
-        body: JSON.stringify(sha ? { message: "Reporte " + fecha, content: contenidoB64, sha } : { message: "Reporte " + fecha, content: contenidoB64 })
+      // El token de GitHub ya no vive aqui: el Worker lo guarda como secreto
+      // y es quien habla con la API de GitHub por nosotros.
+      const resp = await fetch(URL_WORKER, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fecha, datos })
       });
       if (!resp.ok) {
         const detalle = await resp.text();
