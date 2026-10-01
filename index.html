@@ -39,12 +39,59 @@
   .dia-guardado { background: #22c55e; color: #06210f; font-weight: 600; }
   .dia-hoy { border-color: #fff; }
   a.dia-celda { text-decoration: none; }
+
+  /* ---- seleccion de un periodo para el reporte ---- */
+  .dia-rango { background: #1e3a5f; color: #cfe3ff; border-radius: 0; }
+  .dia-rango.dia-guardado { background: #15803d; color: #eaffef; }
+  .dia-extremo {
+    background: #2563eb; color: #fff; font-weight: 700;
+    outline: 2px solid #93c5fd; outline-offset: -2px;
+  }
+  .dia-extremo.dia-guardado { background: #16a34a; outline-color: #86efac; }
+  .dia-ini { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+  .dia-fin { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+  /* con el periodo ya definido, lo que queda fuera se atenua para que el
+     bloque seleccionado se distinga aunque todos los dias esten en verde */
+  .dia-fuera { opacity: 0.3; }
+
+  .barra-acciones { display: flex; gap: 10px; margin-bottom: 20px; }
+  .btn {
+    flex: 1; padding: 13px 10px; border-radius: 12px; border: none;
+    font-size: 14px; font-weight: 600; font-family: inherit;
+    -webkit-tap-highlight-color: rgba(255,255,255,0.15);
+  }
+  .btn-principal { background: #22c55e; color: #06210f; }
+  .btn-principal:disabled { background: #223029; color: #4d6155; }
+  .btn-secundario { background: #262a33; color: #ccc; }
+
+  .panel-seleccion {
+    background: #171a21; border-radius: 14px; padding: 16px; margin-bottom: 20px;
+    border: 1px solid #262a33;
+  }
+  .panel-seleccion .titulo { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .panel-seleccion .detalle { font-size: 13px; color: #999; line-height: 1.5; margin-bottom: 12px; }
+  .panel-seleccion .aviso { font-size: 12px; color: #eab308; margin-bottom: 12px; }
+  .oculto { display: none; }
 </style>
 </head>
 <body>
 
   <h1>Monitor AOS</h1>
-  <p class="subtitulo">Bienvenido al Monitor de tamizaje temprano de apnea del sueño. Selecciona un dia para ver su reporte.</p>
+  <p class="subtitulo" id="subtitulo">Bienvenido al Monitor de tamizaje temprano de apnea del sueño. Selecciona un dia para ver su reporte.</p>
+
+  <div class="barra-acciones" id="barraNormal">
+    <button class="btn btn-principal" onclick="entrarSeleccion()">Generar reporte del periodo</button>
+  </div>
+
+  <div class="panel-seleccion oculto" id="panelSeleccion">
+    <div class="titulo">Periodo del reporte</div>
+    <div class="detalle" id="detalleSeleccion">Toca el dia de inicio y despues el dia de fin.</div>
+    <div class="aviso oculto" id="avisoSeleccion"></div>
+    <div class="barra-acciones" style="margin-bottom:0">
+      <button class="btn btn-secundario" onclick="salirSeleccion()">Cancelar</button>
+      <button class="btn btn-principal" id="btnGenerar" disabled onclick="abrirReporte()">Generar</button>
+    </div>
+  </div>
 
   <div class="leyenda">
     <div class="leyenda-item"><div class="leyenda-punto" style="background:#3b82f6"></div>Datos del ultimo registro</div>
@@ -60,7 +107,18 @@
   const GH_USUARIO = "PARusare";
   const GH_REPO = "Monitor-AOS";
 
+  // Minimo y maximo de noches del periodo. El minimo de tres noches y el
+  // maximo de catorce siguen la guia de practica clinica de la AASM para
+  // registros domiciliarios de varios dias; siete es lo recomendado.
+  const NOCHES_MINIMAS = 3;
+  const NOCHES_MAXIMAS = 14;
+
   const MESES = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
+
+  let modoSeleccion = false;
+  let fechaInicio = null;
+  let fechaFin = null;
+  let estado = { diasGuardados: [], fechaDatos: null, hoy: null, meses: [] };
 
   function hoyMexico() {
     const partes = new Intl.DateTimeFormat("en-CA", {
@@ -71,8 +129,111 @@
     return { iso: `${obj.year}-${obj.month}-${obj.day}`, anio: parseInt(obj.year), mes: parseInt(obj.month), dia: parseInt(obj.day) };
   }
 
-  // Dibuja un mes especifico (anio, mes de 1 a 12) dentro de un contenedor
-  function dibujarMes(anio, mes, diasGuardados, fechaDatos, hoy) {
+  // ---------- utilidades de fecha en texto, sin zonas horarias ----------
+  function aNumero(iso) { return parseInt(iso.replace(/-/g, ""), 10); }
+
+  function sumarDias(iso, dias) {
+    const [a, m, d] = iso.split("-").map(Number);
+    const f = new Date(Date.UTC(a, m - 1, d + dias));
+    return f.toISOString().slice(0, 10);
+  }
+
+  function diasEntre(desde, hasta) {
+    const [a1, m1, d1] = desde.split("-").map(Number);
+    const [a2, m2, d2] = hasta.split("-").map(Number);
+    const t1 = Date.UTC(a1, m1 - 1, d1), t2 = Date.UTC(a2, m2 - 1, d2);
+    return Math.round((t2 - t1) / 86400000) + 1;
+  }
+
+  function fechasDelRango() {
+    if (!fechaInicio || !fechaFin) return [];
+    const salida = [];
+    for (let f = fechaInicio; aNumero(f) <= aNumero(fechaFin); f = sumarDias(f, 1)) salida.push(f);
+    return salida;
+  }
+
+  // ---------- modo de seleccion ----------
+  function entrarSeleccion() {
+    modoSeleccion = true;
+    fechaInicio = fechaFin = null;
+    document.getElementById("barraNormal").classList.add("oculto");
+    document.getElementById("panelSeleccion").classList.remove("oculto");
+    document.getElementById("subtitulo").innerText =
+      "Toca el dia en que inicia el periodo y despues el dia en que termina.";
+    actualizarPanel();
+    pintarCalendarios();
+  }
+
+  function salirSeleccion() {
+    modoSeleccion = false;
+    fechaInicio = fechaFin = null;
+    document.getElementById("barraNormal").classList.remove("oculto");
+    document.getElementById("panelSeleccion").classList.add("oculto");
+    document.getElementById("subtitulo").innerText =
+      "Bienvenido al Monitor de tamizaje temprano de apnea del sueño. Selecciona un dia para ver su reporte.";
+    pintarCalendarios();
+  }
+
+  function tocarDia(fechaISO) {
+    if (!fechaInicio || (fechaInicio && fechaFin)) {
+      fechaInicio = fechaISO; fechaFin = null;
+    } else if (aNumero(fechaISO) < aNumero(fechaInicio)) {
+      fechaFin = fechaInicio; fechaInicio = fechaISO;   // se tocaron al reves
+    } else {
+      fechaFin = fechaISO;
+    }
+    actualizarPanel();
+    pintarCalendarios();
+  }
+
+  function formatoCorto(iso) {
+    const [a, m, d] = iso.split("-");
+    return `${d}/${m}/${a.slice(2)}`;
+  }
+
+  function actualizarPanel() {
+    const detalle = document.getElementById("detalleSeleccion");
+    const aviso = document.getElementById("avisoSeleccion");
+    const boton = document.getElementById("btnGenerar");
+    aviso.classList.add("oculto");
+
+    if (!fechaInicio) {
+      detalle.innerText = "Toca el dia de inicio y despues el dia de fin.";
+      boton.disabled = true;
+      return;
+    }
+    if (!fechaFin) {
+      detalle.innerText = `Inicio: ${formatoCorto(fechaInicio)}. Ahora toca el dia de fin.`;
+      boton.disabled = true;
+      return;
+    }
+
+    const fechas = fechasDelRango();
+    const conRegistro = fechas.filter(f => estado.diasGuardados.includes(f)).length;
+    detalle.innerText =
+      `Del ${formatoCorto(fechaInicio)} al ${formatoCorto(fechaFin)}: ` +
+      `${fechas.length} noches, ${conRegistro} con registro.`;
+
+    if (fechas.length > NOCHES_MAXIMAS) {
+      aviso.innerText = `El periodo no debe pasar de ${NOCHES_MAXIMAS} noches.`;
+      aviso.classList.remove("oculto");
+      boton.disabled = true;
+    } else if (conRegistro < NOCHES_MINIMAS) {
+      aviso.innerText = `Se necesitan al menos ${NOCHES_MINIMAS} noches con registro para que el promedio sea confiable.`;
+      aviso.classList.remove("oculto");
+      boton.disabled = true;
+    } else {
+      boton.disabled = false;
+    }
+  }
+
+  function abrirReporte() {
+    window.location.href = `reporte.html?inicio=${fechaInicio}&fin=${fechaFin}`;
+  }
+
+  // ---------- calendario ----------
+  function dibujarMes(anio, mes) {
+    const { diasGuardados, fechaDatos, hoy } = estado;
     const seccion = document.createElement("div");
     seccion.className = "mes-seccion";
 
@@ -109,19 +270,46 @@
       else if (esDatoActual) clases += " dia-datos";
       if (esHoy) clases += " dia-hoy";
 
-      const celda = document.createElement("a");
-      celda.href = `dia.html?fecha=${fechaISO}`;
-      celda.className = clases;
-      celda.innerText = d;
-      grid.appendChild(celda);
+      if (modoSeleccion) {
+        const n = aNumero(fechaISO);
+        const dentro = fechaInicio && fechaFin &&
+                       n >= aNumero(fechaInicio) && n <= aNumero(fechaFin);
+        const esIni = fechaISO === fechaInicio;
+        const esFin = fechaISO === fechaFin;
+        if (fechaInicio && fechaFin && !dentro) clases += " dia-fuera";
+        if (dentro || esIni) clases += " dia-rango";
+        if (esIni || esFin) clases += " dia-extremo";
+        if (esIni) clases += " dia-ini";
+        if (esFin || (esIni && !fechaFin)) clases += " dia-fin";
+
+        const celda = document.createElement("button");
+        celda.type = "button";
+        celda.className = clases;
+        celda.innerText = d;
+        celda.onclick = () => tocarDia(fechaISO);
+        grid.appendChild(celda);
+      } else {
+        const celda = document.createElement("a");
+        celda.href = `dia.html?fecha=${fechaISO}`;
+        celda.className = clases;
+        celda.innerText = d;
+        grid.appendChild(celda);
+      }
     }
 
     seccion.appendChild(grid);
     return seccion;
   }
 
+  function pintarCalendarios() {
+    const contenedor = document.getElementById("calendarios");
+    contenedor.innerHTML = "";
+    estado.meses.forEach(({ anio, mes }) => contenedor.appendChild(dibujarMes(anio, mes)));
+  }
+
   async function construirCalendario() {
     const hoy = hoyMexico();
+    estado.hoy = hoy;
     const contenedor = document.getElementById("calendarios");
     contenedor.innerHTML = "Cargando...";
 
@@ -145,6 +333,9 @@
       }
     } catch (err) { /* sigue sin marcar azul si falla */ }
 
+    estado.diasGuardados = diasGuardados;
+    estado.fechaDatos = fechaDatos;
+
     // El mes actual siempre se muestra. Ademas, cualquier otro mes que
     // tenga datos reales (guardados o el dato mas reciente de Blynk)
     // tambien se agrega -- nunca meses vacios "porque si".
@@ -159,14 +350,11 @@
       clavesMes.add(`${parseInt(a)}-${parseInt(m)}`);
     }
 
-    const meses = Array.from(clavesMes)
+    estado.meses = Array.from(clavesMes)
       .map(c => { const [a, m] = c.split("-").map(Number); return { anio: a, mes: m }; })
       .sort((a, b) => (a.anio - b.anio) || (a.mes - b.mes));
 
-    contenedor.innerHTML = "";
-    meses.forEach(({ anio, mes }) => {
-      contenedor.appendChild(dibujarMes(anio, mes, diasGuardados, fechaDatos, hoy));
-    });
+    pintarCalendarios();
   }
 
   construirCalendario();
