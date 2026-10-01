@@ -182,13 +182,16 @@
   }
 
   // ---------- lectura de las noches ----------
+  // El reporte guardado manda sobre lo que Blynk tenga en ese momento: la
+  // plataforma conserva los valores de la ultima sesion hasta que llega otra,
+  // asi que solo se recurre a ella cuando la noche todavia no se ha guardado.
   async function cargarNoche(fecha, datosBlynk) {
-    if (datosBlynk && datosBlynk.v10 === fecha) return datosBlynk;
     try {
       const url = `https://raw.githubusercontent.com/${GH_USUARIO}/${GH_REPO}/main/reportes/${fecha}.json?t=${Date.now()}`;
       const resp = await fetch(url, { cache: "no-store" });
       if (resp.ok) return await resp.json();
-    } catch (e) { /* la noche queda sin registro */ }
+    } catch (e) { /* se intenta con Blynk */ }
+    if (datosBlynk && datosBlynk.v10 === fecha) return datosBlynk;
     return null;
   }
 
