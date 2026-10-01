@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reporte de registro - Monitor AOS</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, sans-serif;
+    background: #0d0f14; color: #eee;
+    padding: 20px 14px 60px;
+  }
+
+  .top { display: flex; align-items: center; margin-bottom: 18px; }
+  .volver { color: #999; text-decoration: none; font-size: 15px; margin-right: 12px; }
+  .top h1 { font-size: 17px; font-weight: 600; color: #fff; }
+
+  .controles { display: flex; gap: 10px; margin-bottom: 14px; }
+  .btn {
+    flex: 1; padding: 13px 10px; border-radius: 12px; border: none;
+    font-size: 14px; font-weight: 600; font-family: inherit;
+    -webkit-tap-highlight-color: rgba(255,255,255,0.15);
+  }
+  .btn-principal { background: #22c55e; color: #06210f; }
+  .btn-secundario { background: #262a33; color: #ccc; }
+  .ayuda { font-size: 12px; color: #777; margin-bottom: 18px; line-height: 1.5; }
+
+  /* ---------- la hoja del documento ---------- */
+  .hoja {
+    background: #fff; color: #111; border-radius: 6px;
+    padding: 26px 22px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px; line-height: 1.5;
+  }
+
+  .enc { text-align: center; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 4px; }
+  .enc .institucion { font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase; color: #333; }
+  .enc h2 { font-size: 13.5px; font-weight: 700; letter-spacing: 0.3px; margin: 6px 0 2px; }
+  .enc .tipo { font-size: 10.5px; color: #333; }
+  .franja {
+    border: 1px solid #111; padding: 5px 8px; font-size: 10px; text-align: center;
+    margin: 10px 0 16px; letter-spacing: 0.2px;
+  }
+
+  .seccion { margin-bottom: 14px; }
+  .seccion > h3 {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px;
+    border-bottom: 1px solid #111; padding-bottom: 2px; margin-bottom: 7px;
+  }
+
+  table.datos { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.datos td { padding: 2px 0; vertical-align: top; }
+  table.datos td.etq { color: #333; width: 23%; white-space: nowrap; padding-right: 6px; }
+  table.datos td.val { font-weight: 700; width: 27%; padding-right: 14px; }
+
+  table.datos td.val input, table.datos td.val select {
+    font-family: inherit; font-size: 11.5px; font-weight: 700;
+    border: none; border-bottom: 1px solid #888; background: transparent;
+    color: #111; padding: 0 1px; width: 100%; min-width: 0;
+  }
+  table.datos td.val input:focus, table.datos td.val select:focus { outline: none; border-bottom-color: #111; }
+
+  table.tabla { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  table.tabla th {
+    text-align: left; font-weight: 700; padding: 4px 5px;
+    border-top: 1px solid #111; border-bottom: 1px solid #111; background: #f2f2f2;
+  }
+  table.tabla td { padding: 3px 5px; border-bottom: 1px solid #ccc; }
+  table.tabla td.num, table.tabla th.num { text-align: right; }
+  table.tabla tr.sin td { color: #777; font-style: italic; }
+  table.tabla tfoot td { font-weight: 700; border-top: 1px solid #111; border-bottom: 1px solid #111; }
+  .pie-tabla { font-size: 9.5px; color: #444; margin-top: 4px; line-height: 1.4; }
+
+  .cifras { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-bottom: 10px; }
+  .cifra { border: 1px solid #111; border-right: none; padding: 7px 4px; text-align: center; }
+  .cifra:last-child { border-right: 1px solid #111; }
+  .cifra .n { font-size: 17px; font-weight: 700; line-height: 1.1; }
+  .cifra .e { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.3px; color: #333; margin-top: 3px; }
+
+  .g-row { display: flex; align-items: center; font-size: 10.5px; margin-bottom: 2px; }
+  .g-et { width: 44px; color: #333; flex-shrink: 0; }
+  .g-track { flex: 1; border: 1px solid #bbb; height: 10px; margin: 0 6px; }
+  .g-fill { height: 100%; background: #555; }
+  .g-num { width: 28px; text-align: right; }
+  .g-ref { font-size: 9.5px; color: #444; margin-top: 5px; line-height: 1.4; }
+
+  ul.lista { font-size: 11px; color: #222; }
+  ul.lista li { margin: 0 0 3px 15px; }
+
+  .pie-doc {
+    margin-top: 14px; border-top: 1px solid #111; padding-top: 7px;
+    font-size: 9px; color: #333; text-align: justify; line-height: 1.45;
+  }
+  .pie-doc b { color: #111; }
+  #cargando { text-align: center; color: #888; padding: 40px 0; line-height: 1.6; }
+
+  /* ---------- impresion ---------- */
+  @page { size: letter; margin: 18mm 16mm; }
+  @media print {
+    body { background: #fff; color: #000; padding: 0; }
+    .top, .controles, .ayuda, .no-imprime { display: none !important; }
+    .hoja { border-radius: 0; padding: 0; font-size: 10pt; }
+    table.tabla, table.datos, .cifras, .grafica, .franja { page-break-inside: avoid; }
+    .seccion > h3 { page-break-after: avoid; }
+    .pie-doc { font-size: 7.5pt; }
+    table.datos td.val input, table.datos td.val select {
+      border-bottom: none; appearance: none; -webkit-appearance: none; padding-left: 0;
+    }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="top">
+    <a class="volver" href="index.html">&larr;</a>
+    <h1 id="tituloPagina">Reporte del periodo</h1>
+  </div>
+
+  <div class="controles">
+    <button class="btn btn-secundario" onclick="window.location.href='index.html'">Calendario</button>
+    <button class="btn btn-principal" onclick="window.print()">Guardar como PDF</button>
+  </div>
+  <div class="ayuda">Completa los datos de la persona antes de guardar. El botón abre el diálogo de
+    impresión del teléfono, donde se elige Guardar como PDF.</div>
+
+  <div id="cargando">Reuniendo las noches del periodo...</div>
+  <div class="hoja" id="hoja" style="display:none"></div>
+
+<script>
+  const TOKEN = "Y1l8ur86hHTcYlxXcNSJxuVsJEt1VsUO";
+  const SERVIDOR = "ny3.blynk.cloud";
+  const GH_USUARIO = "PARusare";
+  const GH_REPO = "Monitor-AOS";
+
+  const NOCHES_MINIMAS = 3;
+  // Una noche se considera tecnicamente adecuada a partir de 4 h de registro,
+  // que es el minimo que la AASM establece para una prueba domiciliaria.
+  const HORAS_MINIMAS = 4;
+
+  const CORTES = [
+    { desde: 30, nombre: "Severa" },
+    { desde: 15, nombre: "Moderada" },
+    { desde:  5, nombre: "Leve" },
+    { desde:  0, nombre: "Normal" },
+  ];
+
+  const params = new URLSearchParams(window.location.search);
+  const inicio = params.get("inicio");
+  const fin = params.get("fin");
+
+  const DIAS = ["dom","lun","mar","mié","jue","vie","sáb"];
+  const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio",
+                 "agosto","septiembre","octubre","noviembre","diciembre"];
+
+  function aNumero(iso) { return parseInt(iso.replace(/-/g, ""), 10); }
+  function sumarDias(iso, dias) {
+    const [a, m, d] = iso.split("-").map(Number);
+    return new Date(Date.UTC(a, m - 1, d + dias)).toISOString().slice(0, 10);
+  }
+  function diaSemana(iso) {
+    const [a, m, d] = iso.split("-").map(Number);
+    return DIAS[new Date(Date.UTC(a, m - 1, d)).getUTCDay()];
+  }
+  function fechaLarga(iso) {
+    const [a, m, d] = iso.split("-").map(Number);
+    return `${d} de ${MESES[m - 1]} de ${a}`;
+  }
+  function fechaCorta(iso) {
+    const [, m, d] = iso.split("-");
+    return `${d}/${m}`;
+  }
+  function horaMexico(f) { return f.toLocaleTimeString("es-MX", { timeZone: "America/Mexico_City" }); }
+  function hoyMexicoISO() {
+    const p = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City",
+      year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    const o = {}; p.forEach(x => o[x.type] = x.value);
+    return `${o.year}-${o.month}-${o.day}`;
+  }
+  function clasificar(i) { return CORTES.find(c => i >= c.desde).nombre; }
+  function escapar(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+  function mediana(v) {
+    const s = [...v].sort((a, b) => a - b), m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  // ---------- datos de la persona, guardados en el propio telefono ----------
+  const CLAVE = "monitorAOS.persona";
+  function leerPersona() {
+    try { return JSON.parse(localStorage.getItem(CLAVE)) || {}; } catch (e) { return {}; }
+  }
+  function guardarPersona() {
+    const p = { nombre: document.getElementById("pNombre").value,
+                edad: document.getElementById("pEdad").value,
+                sexo: document.getElementById("pSexo").value };
+    try { localStorage.setItem(CLAVE, JSON.stringify(p)); } catch (e) {}
+  }
+
+  // ---------- lectura de las noches ----------
+  async function cargarNoche(fecha, datosBlynk) {
+    if (datosBlynk && datosBlynk.v10 === fecha) return datosBlynk;
+    try {
+      const url = `https://raw.githubusercontent.com/${GH_USUARIO}/${GH_REPO}/main/reportes/${fecha}.json?t=${Date.now()}`;
+      const resp = await fetch(url, { cache: "no-store" });
+      if (resp.ok) return await resp.json();
+    } catch (e) { /* la noche queda sin registro */ }
+    return null;
+  }
+
+  function resumirNoche(fecha, datos) {
+    if (!datos) return { fecha, hay: false };
+    const conteo = (datos.v9 || "").split("-").map(n => parseInt(n) || 0);
+    const eventos = conteo.reduce((a, b) => a + b, 0);
+    const indice = parseFloat(datos.v6 ?? 0);
+    const horas = parseFloat(datos.v4 ?? 0);
+    return {
+      fecha, hay: true, eventos, indice, horas, conteo,
+      duracion: parseFloat(datos.v5 ?? 0),
+      pico: parseInt(datos.v7 ?? 0),
+      grado: clasificar(indice),
+      adecuada: horas >= HORAS_MINIMAS,
+    };
+  }
+
+  // ---------- armado del documento ----------
+  function folio(isoEmision) {
+    const c = s => s.replace(/-/g, "");
+    return `MAOS-${c(inicio)}-${c(fin)}-${c(isoEmision)}`;
+  }
+
+  // El reparto por hora de todo el periodo, ordenado desde la hora en que
+  // habitualmente empezo el registro, para que la noche se lea completa.
+  function repartoPeriodo(noches) {
+    const suma = new Array(24).fill(0);
+    noches.filter(n => n.hay).forEach(n => n.conteo.forEach((v, h) => suma[h] += v));
+    let mejorInicio = 0, mejorLargo = -1, largo = 0, ini = 0;
+    for (let i = 0; i < 48; i++) {
+      const h = i % 24;
+      if (suma[h] === 0) {
+        if (largo === 0) ini = i;
+        largo++;
+        if (largo > mejorLargo && largo <= 24) { mejorLargo = largo; mejorInicio = (ini + largo) % 24; }
+      } else largo = 0;
+    }
+    const filas = [];
+    const maximo = Math.max(1, ...suma);
+    for (let i = 0; i < 24; i++) {
+      const h = (mejorInicio + i) % 24;
+      if (suma[h] === 0) continue;
+      filas.push({ hora: h, n: suma[h], pct: (suma[h] / maximo) * 100 });
+    }
+    return filas;
+  }
+
+  function armar(r) {
+    const emision = new Date();
+    const emisionISO = hoyMexicoISO();
+    const persona = leerPersona();
+
+    const filasTabla = r.noches.map(n => {
+      if (!n.hay) {
+        return `<tr class="sin"><td>${fechaCorta(n.fecha)}</td><td>${diaSemana(n.fecha)}</td>
+          <td colspan="5">sin registro</td></tr>`;
+      }
+      return `<tr>
+        <td>${fechaCorta(n.fecha)}</td>
+        <td>${diaSemana(n.fecha)}</td>
+        <td class="num">${n.horas.toFixed(2)}</td>
+        <td class="num">${n.eventos}</td>
+        <td class="num">${n.indice.toFixed(2)}</td>
+        <td class="num">${n.duracion.toFixed(1)}</td>
+        <td>${n.grado}</td>
+      </tr>`;
+    }).join("");
+
+    const filasHora = r.reparto.map(f => `
+      <div class="g-row">
+        <div class="g-et">${String(f.hora).padStart(2,"0")}:00</div>
+        <div class="g-track"><div class="g-fill" style="width:${f.pct}%"></div></div>
+        <div class="g-num">${f.n}</div>
+      </div>`).join("");
+
+    document.getElementById("hoja").innerHTML = `
+      <div class="enc">
+        <div class="institucion">Instituto Politécnico Nacional &middot; ESIME Unidad Culhuacán<br>
+          Ingeniería en Comunicaciones y Electrónica</div>
+        <h2>REPORTE DE REGISTRO DE FLUJO RESPIRATORIO DURANTE EL SUEÑO</h2>
+        <div class="tipo">Sistema Monitor AOS &middot; Tamizaje domiciliario de varias noches</div>
+      </div>
+
+      <div class="franja">
+        DOCUMENTO INFORMATIVO. NO CONSTITUYE UN DIAGNÓSTICO NI SUSTITUYE UNA VALORACIÓN MÉDICA.<br>
+        Generado de forma automática por el equipo. Ningún profesional de la salud interviene en su elaboración.
+      </div>
+
+      <div class="seccion">
+        <h3>I. Identificación del documento</h3>
+        <table class="datos">
+          <tr>
+            <td class="etq">Folio</td><td class="val">${folio(emisionISO)}</td>
+            <td class="etq">Fecha de emisión</td><td class="val">${fechaLarga(emisionISO)}, ${horaMexico(emision)}</td>
+          </tr>
+          <tr>
+            <td class="etq">Periodo</td><td class="val">${fechaLarga(inicio)} al ${fechaLarga(fin)}</td>
+            <td class="etq">Noches</td><td class="val">${r.noches.length} en el periodo, ${r.conRegistro} con registro,
+              ${r.adecuadas} técnicamente adecuadas</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="seccion">
+        <h3>II. Datos de la persona registrada</h3>
+        <table class="datos">
+          <tr>
+            <td class="etq">Nombre</td><td class="val" colspan="3">
+              <input id="pNombre" value="${escapar(persona.nombre)}" placeholder="escribir"></td>
+          </tr>
+          <tr>
+            <td class="etq">Edad</td><td class="val">
+              <input id="pEdad" value="${escapar(persona.edad)}" placeholder="años"></td>
+            <td class="etq">Sexo</td><td class="val">
+              <select id="pSexo">
+                <option value=""></option>
+                <option value="Hombre">Hombre</option>
+                <option value="Mujer">Mujer</option>
+                <option value="Prefiere no decirlo">Prefiere no decirlo</option>
+              </select></td>
+          </tr>
+        </table>
+        <div class="pie-tabla">Datos proporcionados por la propia persona. El sistema no los verifica y se
+          conservan únicamente en el teléfono desde el que se genera el documento.</div>
+      </div>
+
+      <div class="seccion">
+        <h3>III. Equipo y método de registro</h3>
+        <table class="datos">
+          <tr>
+            <td class="etq">Equipo</td><td class="val">Monitor AOS, M5Stack Core2 (SoC ESP32)</td>
+            <td class="etq">Sensor</td><td class="val">SHT30, módulo ENV III, bus I2C</td>
+          </tr>
+          <tr>
+            <td class="etq">Señal</td><td class="val">Flujo respiratorio indirecto</td>
+            <td class="etq">Muestreo</td><td class="val">2 lecturas por segundo</td>
+          </tr>
+          <tr>
+            <td class="etq">Colocación</td><td class="val">Mascarilla nasal, unidad en banda de brazo</td>
+            <td class="etq">Duración válida</td><td class="val">7 a 40 s por evento</td>
+          </tr>
+          <tr>
+            <td class="etq">Criterio</td><td class="val" colspan="3">Interrupción del flujo mayor a 10 s,
+              identificada por la ausencia de variación de temperatura y humedad entre lecturas consecutivas,
+              con umbrales de 0.15 °C y 0.5 % de humedad relativa determinados experimentalmente en este proyecto</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="seccion">
+        <h3>IV. Registro por noche</h3>
+        <table class="tabla">
+          <thead><tr>
+            <th>Fecha</th><th>Día</th><th class="num">Registro (h)</th><th class="num">Eventos</th>
+            <th class="num">Índice (ev/h)</th><th class="num">Duración (s)</th><th>Grado</th>
+          </tr></thead>
+          <tbody>${filasTabla}</tbody>
+          <tfoot><tr>
+            <td colspan="2">Periodo</td>
+            <td class="num">${r.horasTotales.toFixed(2)}</td>
+            <td class="num">${r.eventosTotales}</td>
+            <td class="num">${r.indicePromedio.toFixed(2)}</td>
+            <td class="num">${r.duracionPromedio.toFixed(1)}</td>
+            <td>${r.gradoPromedio}</td>
+          </tr></tfoot>
+        </table>
+        <div class="pie-tabla">
+          En el renglón del periodo, el registro y los eventos son sumas; el índice y la duración son promedios
+          por noche. El índice es el número de eventos entre las horas de registro de esa noche. El grado
+          corresponde a los cortes de la American Academy of Sleep Medicine: menor a 5 normal, de 5 a 15 leve,
+          de 15 a 30 moderado, 30 o más severo. Una noche se considera técnicamente adecuada a partir de
+          ${HORAS_MINIMAS} horas de registro.
+        </div>
+      </div>
+
+      <div class="seccion">
+        <h3>V. Resumen del periodo</h3>
+        <div class="cifras">
+          <div class="cifra"><div class="n">${r.indicePromedio.toFixed(1)}</div><div class="e">índice promedio</div></div>
+          <div class="cifra"><div class="n">${r.indiceMediana.toFixed(1)}</div><div class="e">índice mediano</div></div>
+          <div class="cifra"><div class="n">${r.indiceMin.toFixed(1)} a ${r.indiceMax.toFixed(1)}</div><div class="e">rango entre noches</div></div>
+          <div class="cifra"><div class="n">${r.gradoPromedio}</div><div class="e">grado del promedio</div></div>
+        </div>
+        <table class="datos">
+          <tr>
+            <td class="etq">Noches por grado</td><td class="val" colspan="3">${r.porGrado}</td>
+          </tr>
+          <tr>
+            <td class="etq">Registro total</td><td class="val">${r.horasTotales.toFixed(2)} h</td>
+            <td class="etq">Registro por noche</td><td class="val">${r.horasPromedio.toFixed(2)} h en promedio</td>
+          </tr>
+          <tr>
+            <td class="etq">Eventos totales</td><td class="val">${r.eventosTotales}</td>
+            <td class="etq">Duración promedio</td><td class="val">${r.duracionPromedio.toFixed(1)} s</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="seccion grafica">
+        <h3>VI. Distribución de los eventos por hora del día</h3>
+        ${filasHora}
+        <div class="g-ref">Suma de los eventos de todas las noches del periodo, por hora del día. Se omiten
+          las horas sin eventos y el listado comienza en la hora en que habitualmente inició el registro.</div>
+      </div>
+
+      <div class="seccion">
+        <h3>VII. Parámetros no evaluados</h3>
+        <ul class="lista">
+          <li>Saturación de oxígeno y índice de desaturación.</li>
+          <li>Esfuerzo respiratorio torácico y abdominal, por lo que no se distingue entre apnea obstructiva y central.</li>
+          <li>Hipopneas y despertares relacionados con esfuerzo respiratorio.</li>
+          <li>Etapas del sueño, latencia, eficiencia y arquitectura del sueño.</li>
+          <li>Posición corporal y actividad acústica.</li>
+        </ul>
+        <div class="pie-tabla">El tiempo que aparece como registro corresponde al tiempo de sesión del equipo
+          y no a una medición del tiempo total de sueño.</div>
+      </div>
+
+      <div class="pie-doc">
+        <b>Sobre la estructura de este documento.</b> El orden de los apartados sigue el de un reporte de estudio
+        de sueño, que presenta primero los parámetros del registro, después los eventos respiratorios con sus
+        índices y por último su distribución. Los cortes de severidad y el criterio de diez segundos para la
+        interrupción del flujo son los de la American Academy of Sleep Medicine. El mínimo de cuatro horas para
+        considerar adecuada una noche proviene de la guía de práctica clínica de esa misma academia para pruebas
+        domiciliarias, y el periodo de entre tres y catorce noches, de su guía para registros domiciliarios de
+        varios días. El criterio de detección empleado se declara de forma explícita en el apartado III, como
+        corresponde a un reporte de poligrafía respiratoria. Los elementos de identificación toman como modelo
+        los que la NOM-004-SSA3-2012, del expediente clínico, exige para los documentos clínicos, adaptados a un
+        contexto no diagnóstico. <b>Este documento no forma parte de ningún expediente clínico, no lo emite un
+        establecimiento de atención médica, no lleva firma profesional y no contiene interpretación clínica.</b>
+        Su propósito es poner a disposición de un médico los datos registrados por el equipo.
+      </div>
+    `;
+
+    document.getElementById("pSexo").value = persona.sexo || "";
+    ["pNombre", "pEdad", "pSexo"].forEach(id =>
+      document.getElementById(id).addEventListener("change", guardarPersona));
+    document.getElementById("cargando").style.display = "none";
+    document.getElementById("hoja").style.display = "";
+    document.getElementById("tituloPagina").innerText = `${fechaCorta(inicio)} al ${fechaCorta(fin)}`;
+  }
+
+  (async () => {
+    if (!inicio || !fin) {
+      document.getElementById("cargando").innerText = "Falta indicar el periodo del reporte.";
+      return;
+    }
+
+    let datosBlynk = null;
+    try {
+      const resp = await fetch(`https://${SERVIDOR}/external/api/getAll?token=${TOKEN}`);
+      if (resp.ok) datosBlynk = await resp.json();
+    } catch (e) { /* se trabaja solo con lo guardado */ }
+
+    const fechas = [];
+    for (let f = inicio; aNumero(f) <= aNumero(fin); f = sumarDias(f, 1)) fechas.push(f);
+
+    const crudas = await Promise.all(fechas.map(f => cargarNoche(f, datosBlynk)));
+    const noches = fechas.map((f, i) => resumirNoche(f, crudas[i]));
+    const conDatos = noches.filter(n => n.hay);
+
+    if (conDatos.length < NOCHES_MINIMAS) {
+      document.getElementById("cargando").innerHTML =
+        `Sólo se encontraron ${conDatos.length} noches con registro en este periodo.<br>` +
+        `Se necesitan al menos ${NOCHES_MINIMAS} para construir el reporte.`;
+      return;
+    }
+
+    const indices = conDatos.map(n => n.indice);
+    const indicePromedio = indices.reduce((a, b) => a + b, 0) / indices.length;
+    const eventosTotales = conDatos.reduce((a, n) => a + n.eventos, 0);
+    const horasTotales = conDatos.reduce((a, n) => a + n.horas, 0);
+
+    const cuenta = {};
+    conDatos.forEach(n => cuenta[n.grado] = (cuenta[n.grado] || 0) + 1);
+    const porGrado = CORTES.map(c => c.nombre).filter(g => cuenta[g])
+      .map(g => `${cuenta[g]} ${g.toLowerCase()}`).join(", ");
+
+    armar({
+      noches, conRegistro: conDatos.length,
+      adecuadas: conDatos.filter(n => n.adecuada).length,
+      indicePromedio,
+      indiceMediana: mediana(indices),
+      indiceMin: Math.min(...indices),
+      indiceMax: Math.max(...indices),
+      horasTotales,
+      horasPromedio: horasTotales / conDatos.length,
+      duracionPromedio: conDatos.reduce((a, n) => a + n.duracion * n.eventos, 0) / eventosTotales,
+      eventosTotales,
+      gradoPromedio: clasificar(indicePromedio),
+      porGrado,
+      reparto: repartoPeriodo(noches),
+    });
+  })();
+</script>
+</body>
+</html>
