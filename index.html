@@ -71,6 +71,11 @@
   .panel-seleccion .titulo { font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 6px; }
   .panel-seleccion .detalle { font-size: 13px; color: #999; line-height: 1.5; margin-bottom: 12px; }
   .panel-seleccion .aviso { font-size: 12px; color: #eab308; margin-bottom: 12px; }
+  .aviso-lista {
+    background: #2a2416; border: 1px solid #5c4a1a; color: #eab308;
+    border-radius: 10px; padding: 10px 12px; font-size: 12px;
+    line-height: 1.45; margin-bottom: 16px;
+  }
   .oculto { display: none; }
 </style>
 </head>
@@ -99,6 +104,8 @@
     <div class="leyenda-item"><div class="leyenda-punto" style="background:#171a21; border:2px solid #fff"></div>Dia de hoy</div>
   </div>
 
+  <div class="aviso-lista oculto" id="avisoLista"></div>
+
   <div id="calendarios"></div>
 
 <script>
@@ -112,6 +119,8 @@
   // registros domiciliarios de varios dias; siete es lo recomendado.
   const NOCHES_MINIMAS = 3;
   const NOCHES_MAXIMAS = 14;
+
+  const CLAVE_GUARDADOS = "monitorAOS.diasGuardados";
 
   const MESES = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"];
 
@@ -265,6 +274,9 @@
       const esDatoActual = fechaDatos === fechaISO;
       const esHoy = fechaISO === hoy.iso;
 
+      // El verde siempre gana sobre el azul: si la noche ya quedo guardada en
+      // el repositorio, ese es el dato definitivo, y el azul solo marca el
+      // ultimo registro que Blynk conserva y que todavia no se ha guardado.
       let clases = "dia-celda";
       if (esGuardado) clases += " dia-guardado";
       else if (esDatoActual) clases += " dia-datos";
@@ -313,15 +325,26 @@
     const contenedor = document.getElementById("calendarios");
     contenedor.innerHTML = "Cargando...";
 
-    // Dias ya guardados en GitHub (verde)
+    // Dias ya guardados en GitHub (verde). La interfaz de GitHub limita el
+    // numero de consultas por hora, asi que la ultima lista buena se conserva
+    // en el telefono y se usa de respaldo cuando la consulta no responde; de
+    // lo contrario los dias ya guardados se verian como si no existieran.
     let diasGuardados = [];
+    let listaDeRespaldo = false;
     try {
-      const resp = await fetch(`https://api.github.com/repos/${GH_USUARIO}/${GH_REPO}/contents/reportes`);
-      if (resp.ok) {
-        const archivos = await resp.json();
-        diasGuardados = archivos.map(a => a.name.replace(".json", ""));
-      }
-    } catch (err) { /* sigue sin lista guardada si falla */ }
+      const resp = await fetch(
+        `https://api.github.com/repos/${GH_USUARIO}/${GH_REPO}/contents/reportes?t=${Date.now()}`,
+        { cache: "no-store" });
+      if (!resp.ok) throw new Error("codigo " + resp.status);
+      const archivos = await resp.json();
+      diasGuardados = archivos.filter(a => a.name.endsWith(".json"))
+                              .map(a => a.name.replace(".json", ""));
+      try { localStorage.setItem(CLAVE_GUARDADOS, JSON.stringify(diasGuardados)); } catch (e) {}
+    } catch (err) {
+      try { diasGuardados = JSON.parse(localStorage.getItem(CLAVE_GUARDADOS)) || []; }
+      catch (e) { diasGuardados = []; }
+      listaDeRespaldo = true;
+    }
 
     // Fecha real del ultimo dato recibido de Blynk (azul)
     let fechaDatos = null;
@@ -335,6 +358,16 @@
 
     estado.diasGuardados = diasGuardados;
     estado.fechaDatos = fechaDatos;
+
+    const aviso = document.getElementById("avisoLista");
+    if (listaDeRespaldo) {
+      aviso.innerText = diasGuardados.length
+        ? "No se pudo consultar la lista de reportes guardados; se muestra la ultima que se tenia."
+        : "No se pudo consultar la lista de reportes guardados.";
+      aviso.classList.remove("oculto");
+    } else {
+      aviso.classList.add("oculto");
+    }
 
     // El mes actual siempre se muestra. Ademas, cualquier otro mes que
     // tenga datos reales (guardados o el dato mas reciente de Blynk)
