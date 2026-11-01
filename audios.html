@@ -24,9 +24,17 @@
   .section-title { font-size: 14px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
   .audio-item { margin-bottom: 18px; }
   .audio-item:last-child { margin-bottom: 0; }
-  .audio-label { font-size: 13px; color: #ccc; margin-bottom: 8px; }
+  .audio-cabecera { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
+  .audio-label { font-size: 13px; color: #ccc; }
+  .modos { display: flex; background: #0d0f14; border-radius: 9px; padding: 2px; }
+  .modo {
+    background: transparent; color: #888; border: none; border-radius: 7px;
+    font-size: 12px; padding: 5px 10px;
+  }
+  .modo.activo { background: #262a33; color: #fff; }
   audio { width: 100%; }
   .sin-audios { color: #666; font-size: 13px; text-align: center; padding: 12px; }
+  .nota-proc { color: #666; font-size: 11px; margin-top: 14px; line-height: 1.4; }
 
   #btnGuardar {
     width: 100%;
@@ -69,6 +77,10 @@
   <div class="card">
     <div class="section-title">Audios de la sesion</div>
     <div id="zonaAudios"><div class="sin-audios">Cargando...</div></div>
+    <div class="nota-proc" id="notaProc" style="display:none">
+      Procesado: pasa altas de 100 Hz y compresion 4:1, solo para escuchar mejor la respiracion y el ronquido.
+      Original: el archivo tal como lo grabo el equipo. Los niveles en dB del reporte se calculan en el equipo con la senal original.
+    </div>
   </div>
 
   <div id="zonaGuardar"></div>
@@ -109,6 +121,98 @@
     return `${dias[fechaObj.getDay()]} ${dia}/${mes}/${anio.slice(2)}`;
   }
 
+  // --- Procesamiento para escuchar (no cambia las mediciones) ---
+  // 1) Pasa altas Butterworth de 2.o orden a 100 Hz: quita el retumbo del aire.
+  // 2) Compresor: umbral -30 dBFS, relacion 4:1, ataque 5 ms, relajacion 150 ms.
+  // 3) Volumen final: la muestra mas alta queda en -1 dBFS.
+  const PROC = { pasaAltasHz: 100, umbralDb: -30, relacion: 4, ataque: 0.005, relajacion: 0.15, picoDb: -1 };
+
+  // Lee un WAV PCM de 16 bits y devuelve sus muestras (-1 a 1) y su frecuencia de muestreo
+  function leerWav(buffer) {
+    const v = new DataView(buffer);
+    const texto = (o) => String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3));
+    if (texto(0) !== "RIFF" || texto(8) !== "WAVE") throw new Error("no es un WAV");
+    let fs = 16000, bits = 16, canales = 1, off = 12, inicio = -1, tam = 0;
+    while (off + 8 <= v.byteLength) {
+      const id = texto(off), t = v.getUint32(off + 4, true);
+      if (id === "fmt ") {
+        canales = v.getUint16(off + 10, true);
+        fs      = v.getUint32(off + 12, true);
+        bits    = v.getUint16(off + 22, true);
+      } else if (id === "data") {
+        inicio = off + 8;
+        tam = Math.min(t, v.byteLength - inicio);
+        break;
+      }
+      off += 8 + t + (t & 1);
+    }
+    if (inicio < 0 || bits !== 16) throw new Error("formato de WAV no soportado");
+    const n = Math.floor(tam / 2 / canales);
+    const x = new Float32Array(n);
+    for (let i = 0; i < n; i++) x[i] = v.getInt16(inicio + i * 2 * canales, true) / 32768;
+    return { x, fs };
+  }
+
+  function procesarMuestras(x, fs) {
+    // Pasa altas (coeficientes por transformacion bilineal, Q = 1/raiz de 2)
+    const w0 = 2 * Math.PI * PROC.pasaAltasHz / fs, cs = Math.cos(w0), al = Math.sin(w0) / (2 * Math.SQRT1_2);
+    const a0 = 1 + al;
+    const b0 = (1 + cs) / 2 / a0, b1 = -(1 + cs) / a0, b2 = (1 + cs) / 2 / a0;
+    const a1 = -2 * cs / a0, a2 = (1 - al) / a0;
+    const y = new Float32Array(x.length);
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) {
+      const s = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = x[i]; y2 = y1; y1 = s; y[i] = s;
+    }
+    // Compresor con detector de envolvente (ataque y relajacion exponenciales)
+    const ca = Math.exp(-1 / (PROC.ataque * fs)), cr = Math.exp(-1 / (PROC.relajacion * fs));
+    const pendiente = 1 - 1 / PROC.relacion;
+    let env = 0, pico = 0;
+    for (let i = 0; i < y.length; i++) {
+      const a = Math.abs(y[i]);
+      const c = a > env ? ca : cr;
+      env = c * env + (1 - c) * a;
+      const exceso = Math.max(0, 20 * Math.log10(env + 1e-9) - PROC.umbralDb);
+      y[i] *= Math.pow(10, -exceso * pendiente / 20);
+      if (Math.abs(y[i]) > pico) pico = Math.abs(y[i]);
+    }
+    // Volumen final
+    const g = pico > 0 ? Math.pow(10, PROC.picoDb / 20) / pico : 1;
+    for (let i = 0; i < y.length; i++) y[i] *= g;
+    return y;
+  }
+
+  // Arma un WAV de 16 bits, mono
+  function crearWav(y, fs) {
+    const buf = new ArrayBuffer(44 + y.length * 2), v = new DataView(buf);
+    const esc = (o, s) => { for (let i = 0; i < 4; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    esc(0, "RIFF"); v.setUint32(4, 36 + y.length * 2, true); esc(8, "WAVE");
+    esc(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, fs, true); v.setUint32(28, fs * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    esc(36, "data"); v.setUint32(40, y.length * 2, true);
+    for (let i = 0; i < y.length; i++) {
+      const s = Math.max(-1, Math.min(1, y[i]));
+      v.setInt16(44 + i * 2, Math.round(s * 32767), true);
+    }
+    return buf;
+  }
+
+  // Cambia entre la version procesada y la original sin perder la posicion
+  function cambiarModo(item, modo) {
+    const audio = item.querySelector("audio");
+    const url = modo === "procesado" ? item.dataset.procesado : item.dataset.original;
+    if (!url || audio.dataset.modo === modo) return;
+    const t = audio.currentTime, sonando = !audio.paused;
+    audio.src = url;
+    audio.dataset.modo = modo;
+    audio.addEventListener("loadedmetadata", () => {
+      audio.currentTime = Math.min(t, audio.duration || t);
+      if (sonando) audio.play();
+    }, { once: true });
+    item.querySelectorAll(".modo").forEach(b => b.classList.toggle("activo", b.dataset.modo === modo));
+  }
+
   async function cargarAudios() {
     const zona = document.getElementById("zonaAudios");
     const nombres = [`${fecha}_1.wav`, `${fecha}_2.wav`];
@@ -118,20 +222,40 @@
     for (let i = 0; i < nombres.length; i++) {
       const url = `https://raw.githubusercontent.com/${GH_USUARIO}/${GH_REPO}/main/audios/${nombres[i]}`;
       try {
-        const resp = await fetch(url, { method: "HEAD" });
-        if (resp.ok) {
-          encontrados++;
-          const item = document.createElement("div");
-          item.className = "audio-item";
-          item.innerHTML = `<div class="audio-label">Grabacion ${i + 1}</div>
-                             <audio controls src="${url}"></audio>`;
-          zona.appendChild(item);
+        const resp = await fetch(url);
+        if (!resp.ok) continue;
+        const datos = await resp.arrayBuffer();
+        encontrados++;
+
+        const item = document.createElement("div");
+        item.className = "audio-item";
+        item.innerHTML = `<div class="audio-cabecera">
+                            <div class="audio-label">Grabacion ${i + 1}</div>
+                            <div class="modos">
+                              <button class="modo" data-modo="procesado">Procesado</button>
+                              <button class="modo" data-modo="original">Original</button>
+                            </div>
+                          </div>
+                          <audio controls></audio>`;
+        item.dataset.original = URL.createObjectURL(new Blob([datos], { type: "audio/wav" }));
+        try {
+          const { x, fs } = leerWav(datos);
+          const procesado = crearWav(procesarMuestras(x, fs), fs);
+          item.dataset.procesado = URL.createObjectURL(new Blob([procesado], { type: "audio/wav" }));
+        } catch (err) {
+          console.error("No se pudo procesar el audio:", err);
+          item.querySelector('[data-modo="procesado"]').disabled = true;
         }
+        item.querySelectorAll(".modo").forEach(b => b.onclick = () => cambiarModo(item, b.dataset.modo));
+        zona.appendChild(item);
+        cambiarModo(item, item.dataset.procesado ? "procesado" : "original");
       } catch (err) { /* sigue con el siguiente */ }
     }
 
     if (encontrados === 0) {
       zona.innerHTML = '<div class="sin-audios">Sin audios disponibles para este dia.</div>';
+    } else {
+      document.getElementById("notaProc").style.display = "block";
     }
   }
 
